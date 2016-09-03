@@ -6,7 +6,7 @@ import time
 import random
 #based on erm's boatnet.py 
 #https://github.com/erm/boatnet/tree/e4090eeb68d633d82e088e40ec967fc98efc026e
-#written for python 3.x
+
 #requires modified asyncore.py to support pysocks on non blocking sockets
 #also probably needs asynchat.py modified to fix push() bug
 
@@ -132,7 +132,6 @@ class Bot(asynchat.async_chat):
         prefix = ''
         trailing = []
         data = data.strip("[\'\']")
-        print('Parsing: ' + data)
         if not data:
             pass
         if data[0] == ':':
@@ -175,9 +174,10 @@ class Bot(asynchat.async_chat):
 
     def on_nickused(self, prefix, params):
         self.nick = self.nick[:1] + random.choice("1234567890")
-        self.sendline('NICK {0}'.format(self.nick)
+        self.sendline('NICK {0}'.format(self.nick))
 
     def on_privmsg(self, prefix, params):
+        
         global lastbot
         global nextbot
         global lastline
@@ -231,7 +231,7 @@ class Bot(asynchat.async_chat):
                     afile = fascii.replace("\\","")
                     afile = fascii.replace("/","")
                     print('Flooding ' + channel + ' with ' + afile)
-                    f = open("../ascii/" + afile + ".txt")
+                    f = open("../ascii/" + afile + ".txt", encoding="latin-1")
                     ascii = f.read().splitlines()
                     f.close()
                     lastlineidx = 0
