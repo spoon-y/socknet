@@ -240,7 +240,7 @@ class Bot(asynchat.async_chat):
                     if nextbot > len(self.boats) - 1:
                         nextbot = 0 
                     flooding = True
-                    self.boats[0].say(lastline)
+                    self.boats[0].say(ascii[0])
 
                 except IOError:
                     print('File input error.')
