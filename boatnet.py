@@ -199,7 +199,7 @@ class Bot(asynchat.async_chat):
             if lastlineidx > len(ascii) - 1:
                 flooding = False            
             else:
-                self.say(lastline)
+                self.say(ascii[lastlineidx])
             
         trig_char = msg[0][0]
         chan_msg = msg[0:]
