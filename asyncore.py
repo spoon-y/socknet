@@ -294,8 +294,8 @@ class dispatcher:
             print(sock.proxy)
         else:
             pass
+            #uncomment next line to enable regular sockets with no proxy
             #sock = socket.socket(family, type)
-        #sock.setblocking(0)
         self.set_socket(sock)
 
 
@@ -343,6 +343,8 @@ class dispatcher:
         self.addr = addr
         return self.socket.bind(addr)
 
+##########################################################################################
+#original connect()
 #    def connect(self, address):
 #        self.connected = False
 #        self.connecting = True
@@ -356,14 +358,16 @@ class dispatcher:
 #            self.handle_connect_event()
 #        else:
 #            raise OSError(err, errorcode[err])
+
+#new connect()
     def connect(self, address):
         self.connected = False
         self.connecting = True
 
         try:
-            # Asyncore is using 'connect_hex' but not supported by PySocks
+            # Asyncore is using 'connect_ex' but not supported by PySocks
             self.socket.connect(address)
-            self.socket.setblocking(0)  # Didn't work with non blocking socket
+            self.socket.setblocking(0)  
         except socks.ProxyConnectionError as err:
             # Handle 'non blocking socket' but failed
             sockerr = err.socket_err
