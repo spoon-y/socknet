@@ -1,0 +1,264 @@
+import asyncore, asynchat
+import socket
+import sys
+from configparser import ConfigParser
+import time
+
+lastbot = 0
+nextbot = 1
+lastline = ""
+flooding = False
+ascii = []
+lastlineidx = 0
+class Bot(asynchat.async_chat):
+
+    def collect_incoming_data(self, data):
+        self.ibuffer.append(data.decode('utf-8'))
+
+    def __init__(self, config, master=None, home=None, cid=0): 
+        asynchat.async_chat.__init__(self)
+        self.set_terminator(b"\r\n")
+        self.ibuffer = []
+        self.obuffer= b""
+        self.trusted = ""
+        self.proxy = None
+        self.vhost = "localhost"
+        self.config = config
+        for opt, val in self.config.items():
+            setattr(self, opt, val)
+        try:
+            self.server, self.user
+        except AttributeError:
+            print("[!] Error: Not enough arguments")
+            sys.exit(0)
+        self.port = int(self.port)
+        self.nick = self.real = self.user
+        self.quit = "good bye"
+        self.reconn = True
+        self.cid = cid
+        self.master = master
+        self.home = home
+        if master:
+            self.create_boats()
+        self.hooked = {
+            'PING':self.on_ping,
+            'KICK':self.on_kick,
+            'PRIVMSG':self.on_privmsg,
+            '433':self.on_nickused,
+            '001':self.on_connect,
+            'JOIN':self.on_join
+        }
+        self.connect()
+
+    def create_boats(self):
+        self.boats = []
+        self.boat_confs = self.master
+        for i in range(len(self.boat_confs)):
+            self.boats.append(self.__class__(self.boat_confs[i], master=None, 
+                                            home=self, cid=i))
+            time.sleep(5)
+    
+    def connect(self):
+        if self.vhost != 'localhost':
+            raw_ip = socket.getaddrinfo(self.vhost, 0)[0][4][0]
+            if ':' in raw_ip:
+             self.create_socket(socket.AF_INET6, socket.SOCK_STREAM, proxy=self.proxy)
+            else:
+                self.create_socket(socket.AF_INET, socket.SOCK_STREAM, proxy=self.proxy)
+            self.bind((self.vhost,0))
+        else:
+            self.create_socket(socket.AF_INET, socket.SOCK_STREAM, proxy=self.proxy)
+        if self.password != "None":
+            self.sendline('PASS {0}'.format(self.password))
+        asynchat.async_chat.connect(self, (self.server, self.port))
+        print("[!] {0} connecting to {1} on port {2}".format(self.nick, 
+                                                            self.server, 
+                                                            self.port))
+
+    def disconnect(self):
+        if self.reconn:
+            self.reconn = False
+        self.sendline('QUIT :{0}'.format(self.quit))
+        print("[!] {0} disconnecting from {1}".format(self.nick, self.server))
+        #if self.reconn:
+        #    self.connect()
+
+    def handle_connect(self):
+        print("Handling Connect")
+        self.sendline('USER {0} * * :{1}'.format(self.user, self.real))
+        self.sendline('NICK {0}'.format(self.nick))
+        print("[!] {0} connected!".format(self.nick))
+
+    def handle_close(self):
+        print("Handling Close")
+        self.close()
+        #quit()
+        # if self.reconn:
+        #     self.connect()
+
+    def sendline(self, line):
+        self.push(bytes(line + '\r\n', "UTF-8"))
+        print('Sending: ' + line + '\r\n')
+
+    def hook(self, command, function):
+        if command not in self.hooked:
+            self.hooked[command] = []
+        if function not in self.hooked[command]:
+            self.hooked[command].append(function)
+                
+    def recvline(self, prefix, command, params):
+        i = self.hooked.get(command)
+        if i:
+            i(prefix, params)
+            return 
+
+    def parseline(self, data):
+        prefix = ''
+        trailing = []
+        data = data.strip("[\'\']")
+        print('Parsing: ' + data)
+        if not data:
+            pass
+        if data[0] == ':':
+            prefix, data = data[1:].split(' ', 1)
+        if data.find(' :') != -1:
+            data, trailing = data.split(' :', 1)
+            params = data.split()
+            params.append(trailing)
+        else:
+            params = data[0].split()
+        command = params.pop(0)
+        return prefix, command, params
+
+    def found_terminator(self):
+        data = ''.join(str(self.ibuffer))
+        self.ibuffer = []
+        prefix, command, params = self.parseline(data)
+        self.recvline(prefix, command, params)
+        
+    def on_ping(self, prefix, params):
+        self.sendline('PONG {0}'.format(' '.join(params)))
+
+    def on_connect(self, prefix, params):
+        self.connected = True
+        for chan in self.channels:
+            self.joinchan(chan)
+            print("[!] Joining {0}".format(chan))
+    
+    def on_join(self, prefix, params):
+        nick = prefix.split('!')[0]
+        if nick == self.nick:
+            channel = params[0]
+            if channel not in [chan for chan in self.channels]:
+                self.channels.append(channel)
+
+    def on_kick(self, prefix, params):
+        nick = prefix.split('!')[0]
+        channel = params[0]
+        print("[!] {0} was kicked from {1}".format(nick, channel))
+
+    def on_nickused(self, prefix, params):
+        self.sendline('NICK {0}_'.format(self.nick))
+
+    def on_privmsg(self, prefix, params):
+        global lastbot
+        global nextbot
+        global lastline
+        global flooding
+        global ascii
+        global lastlineidx
+        nick = prefix.split('!')[0]
+        channel = params[0]
+        fullmsg = params[1].encode('utf-8')
+        msg = params[1].split()
+        if flooding and not self.master and self.cid == nextbot and nick == boatnet.boats[lastbot].user:
+            print("Flooding True\r\n")
+            time.sleep(.08)
+            lastbot = nextbot
+            nextbot += 1
+            if nextbot > len(boatnet.boats) - 1:
+                nextbot = 0
+            lastlineidx += 1
+            if lastlineidx > len(ascii) - 1:
+                flooding = False            
+            else:
+                lastline = ascii[lastlineidx].replace(" ",".")
+                self.say(lastline)
+            
+        trig_char = msg[0][0]
+        chan_msg = msg[0:]
+        if nick == self.trusted and self.master and trig_char == '@':
+            print("Handling Commands")
+            cmd = msg[0][1:]
+            if cmd == 'kill':
+                if len(msg) < 2:
+                    self.say("[!] Not enough arguments..")
+                else:
+                    cid = msg[1]
+                    #idx = 0
+                    #for index, worker in enumerate(self.boats):
+                    #    if worker.cid == cid:
+                    #        idx = index
+                    #        break
+                    self.boats[cid].disconnect()
+                    self.boats.pop(cid)
+            elif cmd == 'info':
+                for bot in self.boats:
+                    self.say("id: {0} user: {1} server: {2} channels: {3}".format(
+                                bot.cid, bot.user, bot.server, bot.channels))  
+            elif cmd == 'flood':
+                fascii = msg[1]
+                print("Ascii=" + fascii + "\r\n")
+                try:
+                    afile = fascii.replace("\\","")
+                    afile = fascii.replace("/","")
+                    print('Flooding ' + channel + ' with ' + afile)
+                    f = open("../ascii/" + afile + ".txt")
+                    ascii = f.read().splitlines()
+                    f.close()
+                    lastlineidx = 0
+                    lastbot = 0
+                    nextbot = 1
+                    if nextbot > len(self.boats) - 1:
+                        nextbot = 0 
+                    lastline = ascii[0].replace(" ",".")
+                    flooding = True
+                    self.boats[0].say(lastline)
+
+                except IOError:
+                    print('File input error.')
+                except UnicodeDecodeError:
+                    print("Decode error.")
+            else:
+                self.say("[!] Command no found...")
+
+    def say(self, line):
+        line = line.replace(" ",".")
+        self.sendline('PRIVMSG {0} {1}'.format(self.channels[0], line))
+
+    def partchan(self, chan, reason):
+        self.sendline('PART {0} {1}'.format(chan, reason))
+
+    def joinchan(self, chan):
+        self.sendline('JOIN {0}'.format(chan))
+
+
+if __name__ == '__main__':
+    flooding = False
+    boat_confs = []
+    config = ConfigParser()
+    config.read("boats.ini")
+    sections = dict(config._sections)
+    for section_name in config.sections():
+        if section_name == 'master':
+            master_conf = dict(config.items(section_name))
+            master_conf['channels'] = master_conf['channels'].split(',')
+        else:
+            _boat_conf = dict(config.items(section_name))
+            _boat_conf['channels'] = _boat_conf['channels'].split(',')
+            boat_confs.append(_boat_conf)
+    boatnet = Bot(master_conf, master=boat_confs)
+    try:
+        asyncore.loop()
+    except KeyboardInterrupt:
+        sys.exit(0)
