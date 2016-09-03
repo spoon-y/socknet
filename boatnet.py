@@ -3,13 +3,28 @@ import socket
 import sys
 from configparser import ConfigParser
 import time
+import random
+#based on erm's boatnet.py 
+#https://github.com/erm/boatnet/tree/e4090eeb68d633d82e088e40ec967fc98efc026e
 
+#requires modified asyncore.py to support pysocks on non blocking sockets
+#also probably needs asynchat.py modified to fix push() bug
+
+#todo
+#fix push() cutting off line after a space is sent
+#timeouts for sockets
+#handle errors
+#handle disconnects
+#import list of proxies to use in case of disconnect/
+
+
+#vars for multibot flooding
 lastbot = 0
 nextbot = 1
-lastline = ""
 flooding = False
 ascii = []
 lastlineidx = 0
+
 class Bot(asynchat.async_chat):
 
     def collect_incoming_data(self, data):
@@ -56,7 +71,7 @@ class Bot(asynchat.async_chat):
         for i in range(len(self.boat_confs)):
             self.boats.append(self.__class__(self.boat_confs[i], master=None, 
                                             home=self, cid=i))
-            time.sleep(5)
+            time.sleep(5) #trying to throttle connects, not working as planned
     
     def connect(self):
         if self.vhost != 'localhost':
@@ -80,6 +95,7 @@ class Bot(asynchat.async_chat):
             self.reconn = False
         self.sendline('QUIT :{0}'.format(self.quit))
         print("[!] {0} disconnecting from {1}".format(self.nick, self.server))
+        self.close()
         #if self.reconn:
         #    self.connect()
 
@@ -158,7 +174,8 @@ class Bot(asynchat.async_chat):
         print("[!] {0} was kicked from {1}".format(nick, channel))
 
     def on_nickused(self, prefix, params):
-        self.sendline('NICK {0}_'.format(self.nick))
+        self.nick = self.nick[:1] + random.choice("1234567890")
+        self.sendline('NICK {0}'.format(self.nick)
 
     def on_privmsg(self, prefix, params):
         global lastbot
@@ -169,9 +186,9 @@ class Bot(asynchat.async_chat):
         global lastlineidx
         nick = prefix.split('!')[0]
         channel = params[0]
-        fullmsg = params[1].encode('utf-8')
         msg = params[1].split()
         if flooding and not self.master and self.cid == nextbot and nick == boatnet.boats[lastbot].user:
+            #rest of multibot flooding takes place here.
             print("Flooding True\r\n")
             time.sleep(.08)
             lastbot = nextbot
@@ -182,7 +199,6 @@ class Bot(asynchat.async_chat):
             if lastlineidx > len(ascii) - 1:
                 flooding = False            
             else:
-                lastline = ascii[lastlineidx].replace(" ",".")
                 self.say(lastline)
             
         trig_char = msg[0][0]
@@ -195,6 +211,7 @@ class Bot(asynchat.async_chat):
                     self.say("[!] Not enough arguments..")
                 else:
                     cid = msg[1]
+                    # code to search through bots and match cid to index, will need this when handling disconnects and timeouts but for now it isnt needed
                     #idx = 0
                     #for index, worker in enumerate(self.boats):
                     #    if worker.cid == cid:
@@ -207,6 +224,7 @@ class Bot(asynchat.async_chat):
                     self.say("id: {0} user: {1} server: {2} channels: {3}".format(
                                 bot.cid, bot.user, bot.server, bot.channels))  
             elif cmd == 'flood':
+                #multibot flooding starts here. load the ascii, set up the variables, send the first line. when the next bot reads a message from this bot, it sends the next line.
                 fascii = msg[1]
                 print("Ascii=" + fascii + "\r\n")
                 try:
@@ -221,7 +239,6 @@ class Bot(asynchat.async_chat):
                     nextbot = 1
                     if nextbot > len(self.boats) - 1:
                         nextbot = 0 
-                    lastline = ascii[0].replace(" ",".")
                     flooding = True
                     self.boats[0].say(lastline)
 
@@ -233,7 +250,7 @@ class Bot(asynchat.async_chat):
                 self.say("[!] Command no found...")
 
     def say(self, line):
-        line = line.replace(" ",".")
+        line = line.replace(" ",".") #asynchat is fucking up when sending spaces, need to check asynchat.py push() method
         self.sendline('PRIVMSG {0} {1}'.format(self.channels[0], line))
 
     def partchan(self, chan, reason):
