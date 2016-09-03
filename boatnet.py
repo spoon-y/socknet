@@ -6,7 +6,7 @@ import time
 import random
 #based on erm's boatnet.py 
 #https://github.com/erm/boatnet/tree/e4090eeb68d633d82e088e40ec967fc98efc026e
-
+#written for python 3.x
 #requires modified asyncore.py to support pysocks on non blocking sockets
 #also probably needs asynchat.py modified to fix push() bug
 
