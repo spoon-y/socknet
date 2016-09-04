@@ -61,9 +61,14 @@ class Bot(asynchat.async_chat):
             'PRIVMSG':self.on_privmsg,
             '433':self.on_nickused,
             '001':self.on_connect,
-            'JOIN':self.on_join
+            'JOIN':self.on_join,
+            'ERROR':self.on_error
         }
         self.connect()
+
+    def ordercid(self):
+        for i in range(len(self.boats)):
+            self.boats[i].cid = i
 
     def create_boats(self):
         self.boats = []
@@ -108,7 +113,15 @@ class Bot(asynchat.async_chat):
     def handle_close(self):
         print("Handling Close")
         self.close()
-        #doesnt work, need to match cid --> boatnet.boats.pop(self.cid)
+        if not self.master:
+            idx = -1
+            for i in range(len(boatnet.boats)):
+                idx += 1
+                if boatnet.boats[i].cid == self.cid:
+                    idx = i
+                    break
+            boatnet.boats.pop(idx)
+            boatnet.ordercid()
         #quit()
         # if self.reconn:
         #     self.connect()
@@ -174,8 +187,12 @@ class Bot(asynchat.async_chat):
         print("[!] {0} was kicked from {1}".format(nick, channel))
 
     def on_nickused(self, prefix, params):
-        self.nick = self.nick[:1] + random.choice("1234567890")
+        self.nick = self.nick[:-1] + random.choice("1234567890")
         self.sendline('NICK {0}'.format(self.nick))
+
+    def on_error(self, prefix, params):
+        print("Error {0} {1}".format(prefix, params))
+        self.disconnect()
 
     def on_privmsg(self, prefix, params):
         
@@ -190,7 +207,6 @@ class Bot(asynchat.async_chat):
         msg = params[1].split()
         if flooding and not self.master and self.cid == nextbot and nick == boatnet.boats[lastbot].user:
             #rest of multibot flooding takes place here.
-            print("Flooding True\r\n")
             time.sleep(.08)
             lastbot = nextbot
             nextbot += 1
@@ -212,14 +228,14 @@ class Bot(asynchat.async_chat):
                     self.say("[!] Not enough arguments..")
                 else:
                     cid = msg[1]
-                    # code to search through bots and match cid to index, will need this when handling disconnects and timeouts but for now it isnt needed
-                    #idx = 0
-                    #for index, worker in enumerate(self.boats):
-                    #    if worker.cid == cid:
-                    #        idx = index
-                    #        break
-                    self.boats[cid].disconnect()
-                    self.boats.pop(cid)
+                    idx = -1
+                    for i in range(len(self.boats)):
+                        idx += 1
+                        if self.boats[i].cid == cid:
+                            idx = i
+                            break
+                    self.boats[idx].disconnect()
+                    self.boats.pop(idx)
             elif cmd == 'info':
                 for bot in self.boats:
                     self.say("id: {0} user: {1} server: {2} channels: {3}".format(
@@ -244,7 +260,7 @@ class Bot(asynchat.async_chat):
                     self.say("[!] Not enough arguments..")     
             elif cmd == 'flood':
                 #multibot flooding starts here. load the ascii, set up the variables, send the first line. when the next bot reads a message from this bot, it sends the next line.
-                
+                self.ordercid()
                 print("Ascii=" + msg[1] + "\r\n")
                 try:
                     afile = msg[1].replace("\\","")
