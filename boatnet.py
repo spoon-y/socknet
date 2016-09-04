@@ -233,7 +233,7 @@ class Bot(asynchat.async_chat):
                         if boat.cid == cid:
                             break
                     self.boats[idx].disconnect()
-                    self.boats.pop(idx)
+                    #self.boats.pop(idx)
             elif cmd == 'info':
                 for bot in self.boats:
                     self.say("id: {0} user: {1} server: {2} channels: {3}".format(
