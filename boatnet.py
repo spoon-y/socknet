@@ -108,6 +108,7 @@ class Bot(asynchat.async_chat):
     def handle_close(self):
         print("Handling Close")
         self.close()
+        #doesnt work, need to match cid --> boatnet.boats.pop(self.cid)
         #quit()
         # if self.reconn:
         #     self.connect()
@@ -222,14 +223,32 @@ class Bot(asynchat.async_chat):
             elif cmd == 'info':
                 for bot in self.boats:
                     self.say("id: {0} user: {1} server: {2} channels: {3}".format(
-                                bot.cid, bot.user, bot.server, bot.channels))  
+                                bot.cid, bot.user, bot.server, bot.channels))
+                    time.sleep(.5)
+            elif cmd == 'add':
+                try:
+                    cid = len(boatnet.boats)
+                    defig = ConfigParser()
+                    defig['add'] = {'user':  msg[1],
+                                    'channels': msg[2],
+                                    'proxy': msg[3],
+                                    'server': boatnet.server,
+                                    'port': str(boatnet.port),
+                                    'password': "None" }
+                    newbot = dict(defig.items('add'))
+                    newbot['channels'] = newbot['channels'].split(",")
+
+                    boatnet.boats.append(boatnet.__class__(newbot, master=None, home=boatnet, cid=cid))
+                    
+                except IndexError:
+                    self.say("[!] Not enough arguments..")     
             elif cmd == 'flood':
                 #multibot flooding starts here. load the ascii, set up the variables, send the first line. when the next bot reads a message from this bot, it sends the next line.
-                fascii = msg[1]
-                print("Ascii=" + fascii + "\r\n")
+                
+                print("Ascii=" + msg[1] + "\r\n")
                 try:
-                    afile = fascii.replace("\\","")
-                    afile = fascii.replace("/","")
+                    afile = msg[1].replace("\\","")
+                    afile = afile.replace("/","")
                     print('Flooding ' + channel + ' with ' + afile)
                     f = open("../ascii/" + afile + ".txt", encoding="latin-1")
                     ascii = f.read().splitlines()
@@ -261,7 +280,6 @@ class Bot(asynchat.async_chat):
 
 
 if __name__ == '__main__':
-    flooding = False
     boat_confs = []
     config = ConfigParser()
     config.read("boats.ini")
