@@ -118,7 +118,6 @@ class Bot(asynchat.async_chat):
             for boat in boatnet.boats:
                 idx += 1
                 if boat.cid == self.cid:
-                    idx = i
                     break
             boatnet.boats.pop(idx)
             boatnet.ordercid()
