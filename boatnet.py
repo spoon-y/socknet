@@ -76,7 +76,7 @@ class Bot(asynchat.async_chat):
         for i in range(len(self.boat_confs)):
             self.boats.append(self.__class__(self.boat_confs[i], master=None, 
                                             home=self, cid=i))
-            time.sleep(5) #trying to throttle connects, not working as planned
+            time.sleep(1) #trying to throttle connects, not working as planned
     
     def connect(self):
         if self.vhost != 'localhost':
@@ -115,9 +115,9 @@ class Bot(asynchat.async_chat):
         self.close()
         if not self.master:
             idx = -1
-            for i in range(len(boatnet.boats)):
+            for boat in boatnet.boats:
                 idx += 1
-                if boatnet.boats[i].cid == self.cid:
+                if boat.cid == self.cid:
                     idx = i
                     break
             boatnet.boats.pop(idx)
@@ -205,7 +205,7 @@ class Bot(asynchat.async_chat):
         nick = prefix.split('!')[0]
         channel = params[0]
         msg = params[1].split()
-        if flooding and not self.master and self.cid == nextbot and nick == boatnet.boats[lastbot].user:
+        if flooding and not self.master and self.cid == nextbot and nick == boatnet.boats[lastbot].nick:
             #rest of multibot flooding takes place here.
             time.sleep(.08)
             lastbot = nextbot
@@ -227,12 +227,11 @@ class Bot(asynchat.async_chat):
                 if len(msg) < 2:
                     self.say("[!] Not enough arguments..")
                 else:
-                    cid = msg[1]
+                    cid = int(msg[1])
                     idx = -1
-                    for i in range(len(self.boats)):
+                    for boat in self.boats:
                         idx += 1
-                        if self.boats[i].cid == cid:
-                            idx = i
+                        if boat.cid == cid:
                             break
                     self.boats[idx].disconnect()
                     self.boats.pop(idx)
@@ -276,7 +275,29 @@ class Bot(asynchat.async_chat):
                         nextbot = 0 
                     flooding = True
                     self.boats[0].say(ascii[0])
-
+                except IOError:
+                    print('File input error.')
+                except UnicodeDecodeError:
+                    print("Decode error.")
+            elif cmd == 'fflood':
+                #testing quicker flooding
+                self.ordercid()
+                print("Ascii=" + msg[1] + "\r\n")
+                try:
+                    afile = msg[1].replace("\\","")
+                    afile = afile.replace("/","")
+                    print('Flooding with ' + afile)
+                    f = open("../ascii/" + afile + ".txt", encoding="latin-1")
+                    ascii = f.read().splitlines()
+                    f.close()
+                    lastbot = 0
+                    for line in ascii:
+                        self.boats[lastbot].say(line)
+                        time.sleep(.1)
+                        if lastbot + 1 > len(self.boats) - 1:
+                            lastbot = 0 
+                        else:
+                            lastbot +=1
                 except IOError:
                     print('File input error.')
                 except UnicodeDecodeError:
