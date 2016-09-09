@@ -295,7 +295,7 @@ class dispatcher:
         else:
             pass
             #uncomment next line to enable regular sockets with no proxy
-            #sock = socket.socket(family, type)
+            sock = socket.socket(family, type)
         self.set_socket(sock)
 
 
