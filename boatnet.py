@@ -30,15 +30,17 @@ class Bot(asynchat.async_chat):
     def collect_incoming_data(self, data):
         self.ibuffer.append(data.decode('utf-8'))
 
-    def __init__(self, config, master=None, home=None, cid=0): 
+    def __init__(self, config, master=None, home=None, cid=0, ismaster=False): 
         asynchat.async_chat.__init__(self)
         self.set_terminator(b"\r\n")
         self.ibuffer = []
+        self.boats = []
         self.obuffer= b""
         self.trusted = ""
         self.proxy = None
         self.vhost = "localhost"
         self.config = config
+        self.ismaster = ismaster
         for opt, val in self.config.items():
             setattr(self, opt, val)
         try:
@@ -53,8 +55,10 @@ class Bot(asynchat.async_chat):
         self.cid = cid
         self.master = master
         self.home = home
+        self.delay = 30
         if master:
-            self.create_boats()
+            self.boats = []
+            self.last_connected = time.time()
         self.hooked = {
             'PING':self.on_ping,
             'KICK':self.on_kick,
@@ -70,13 +74,17 @@ class Bot(asynchat.async_chat):
         for i in range(len(self.boats)):
             self.boats[i].cid = i
 
-    def create_boats(self):
-        self.boats = []
-        self.boat_confs = self.master
-        for i in range(len(self.boat_confs)):
-            self.boats.append(self.__class__(self.boat_confs[i], master=None, 
-                                            home=self, cid=i))
-            time.sleep(1) #trying to throttle connects, not working as planned
+    def readable(self):
+        if self.master:
+            if self.last_connected + self.delay < time.time():
+                boat = self.master.pop()
+                if not self.boats:
+                    cid = 0
+                else:
+                    cid = len(self.boats) + 1
+                self.boats.append(self.__class__(boat, master=None, home=self, cid=cid))
+                self.last_connected = time.time()
+        return True
     
     def connect(self):
         if self.vhost != 'localhost':
@@ -113,17 +121,12 @@ class Bot(asynchat.async_chat):
     def handle_close(self):
         print("Handling Close")
         self.close()
-        if not self.master:
-            idx = -1
-            for boat in boatnet.boats:
-                idx += 1
-                if boat.cid == self.cid:
-                    break
-            boatnet.boats.pop(idx)
+        if not self.ismaster:
+            boatnet.boats.pop(self.cid)
             boatnet.ordercid()
-        #quit()
-        # if self.reconn:
-        #     self.connect()
+        else:
+            print("Master died. Reconnecting...")
+            self.connect()
 
     def sendline(self, line):
         self.push(bytes(line + '\r\n', "UTF-8"))
@@ -161,6 +164,7 @@ class Bot(asynchat.async_chat):
     def found_terminator(self):
         data = ''.join(str(self.ibuffer))
         self.ibuffer = []
+        print("RAW: " + data)
         prefix, command, params = self.parseline(data)
         self.recvline(prefix, command, params)
         
@@ -204,7 +208,7 @@ class Bot(asynchat.async_chat):
         nick = prefix.split('!')[0]
         channel = params[0]
         msg = params[1].split()
-        if flooding and not self.master and self.cid == nextbot and nick == boatnet.boats[lastbot].nick:
+        if flooding and not self.ismaster and self.cid == nextbot and nick == boatnet.boats[lastbot].nick:
             #rest of multibot flooding takes place here.
             time.sleep(.08)
             lastbot = nextbot
@@ -219,7 +223,7 @@ class Bot(asynchat.async_chat):
             
         trig_char = msg[0][0]
         chan_msg = msg[0:]
-        if nick == self.trusted and self.master and trig_char == '@':
+        if nick == self.trusted and self.ismaster and trig_char == '@':
             print("Handling Commands")
             cmd = msg[0][1:]
             if cmd == 'kill':
@@ -227,29 +231,27 @@ class Bot(asynchat.async_chat):
                     self.say("[!] Not enough arguments..")
                 else:
                     cid = int(msg[1])
-                    idx = -1
-                    for boat in self.boats:
-                        idx += 1
-                        if boat.cid == cid:
-                            break
-                    self.boats[idx].disconnect()
-                    #self.boats.pop(idx)
+                    if cid <= len(self.boats) - 1: 
+                        self.boats[cid].disconnect() 
+                    else: 
+                        self.say("[!] ID not in range.")
             elif cmd == 'info':
-                for bot in self.boats:
-                    self.say("id: {0} user: {1} server: {2} channels: {3}".format(
-                                bot.cid, bot.user, bot.server, bot.channels))
-                    time.sleep(.5)
+                try:
+                    for bot in self.boats:
+                        self.say("id: {0} user: {1} server: {2} channels: {3}".format(
+                                    bot.cid, bot.user, bot.server, bot.channels))
+                        time.sleep(.5)
+                except:
+                    self.say("[!] Error. Did you generate any connections?")
             elif cmd == 'add':
                 try:
-                    cid = len(boatnet.boats)
-                    defig = ConfigParser()
-                    defig['add'] = {'user':  msg[1],
-                                    'channels': msg[2],
-                                    'proxy': msg[3],
-                                    'server': boatnet.server,
-                                    'port': str(boatnet.port),
-                                    'password': "None" }
-                    newbot = dict(defig.items('add'))
+                    cid = len(self.boats)
+                    newbot = {'user':  msg[1],
+                              'channels': msg[2],
+                              'proxy': msg[3],
+                              'server': boatnet.server,
+                              'port': str(boatnet.port),
+                              'password': "None" }
                     newbot['channels'] = newbot['channels'].split(",")
 
                     boatnet.boats.append(boatnet.__class__(newbot, master=None, home=boatnet, cid=cid))
@@ -289,14 +291,14 @@ class Bot(asynchat.async_chat):
                     f = open("../ascii/" + afile + ".txt", encoding="latin-1")
                     ascii = f.read().splitlines()
                     f.close()
-                    lastbot = 0
+                    nextbot = 0
                     for line in ascii:
-                        self.boats[lastbot].say(line)
+                        self.boats[nextbot].say(line)
                         time.sleep(.1)
-                        if lastbot + 1 > len(self.boats) - 1:
-                            lastbot = 0 
+                        if nextbot + 1 > len(self.boats) - 1:
+                            nextbot = 0 
                         else:
-                            lastbot +=1
+                            nextbot +=1
                 except IOError:
                     print('File input error.')
                 except UnicodeDecodeError:
@@ -328,7 +330,7 @@ if __name__ == '__main__':
             _boat_conf = dict(config.items(section_name))
             _boat_conf['channels'] = _boat_conf['channels'].split(',')
             boat_confs.append(_boat_conf)
-    boatnet = Bot(master_conf, master=boat_confs)
+    boatnet = Bot(master_conf, master=boat_confs, ismaster=True)
     try:
         asyncore.loop()
     except KeyboardInterrupt:
